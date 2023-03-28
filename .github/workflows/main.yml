@@ -1,0 +1,53 @@
+name: Build, Lint, and work with Docker
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v3
+
+      - name: npm install
+        run: npm install
+
+      - name: 1. check with lint
+        run: npm run lint
+
+      - name: 2. build Docker image
+        if: success()
+        run: |
+          docker build -t docker_nodejs .
+          docker tag docker_nodejs ${{ secrets.DOCKER_USER }}/docker_nodejs
+
+      - name: login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_PASS }}
+
+      - name: 3. push to Docker Hub
+        if: success()
+        uses: docker/build-push-action@v4.0.0
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USER }}/docker_nodejs:latest
+            ${{ secrets.DOCKER_USER }}/docker_nodejs:${{ github.sha }}
+
+      - name: 4. pull from Docker Hub
+        if: success()
+        run: |
+          docker pull ${{ secrets.DOCKER_USER }}/docker_nodejs:latest
+          
+      - name: 4. curl
+        if: success()
+        run: |
+          docker run -d -p 80:80 --name docker_nodejs ${{ secrets.DOCKER_USER }}/docker_nodejs:latest
+          sleep 5
+          curl -I http://localhost:80 | grep "200 OK"
