@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: docker-nodejs-deploy
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: app
+  template:
+    metadata:
+      labels:
+        app: app
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:latest
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: conf-nginx
+              mountPath: /etc/nginx/conf.d
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            periodSeconds: 5
+            initialDelaySeconds: 60
+        - name: js_server
+          image:  sateyro/docker_nodejs:latest
+          ports:
+            - containerPort: 3000
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            periodSeconds: 5
+            initialDelaySeconds: 60
+      volumes:
+        - name: conf-nginx
+          configMap:
+            name: conf-nginx
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: conf-nginx
+data:
+  default.conf: |
+    upstream js_server {
+      server 127.0.0.1:3000;
+    }
+
+    map $http_upgrade $connection_upgrade {
+      default upgrade;
+      ''      close;
+    }
+
+    server {
+      listen 81;
+
+      location / {
+        proxy_pass http://js_server;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+      }
+    }
